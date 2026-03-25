@@ -12,14 +12,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { amount, name, email, description, message } = req.body || {};
+    const { amount, name, email, message } = req.body || {};
 
     if (!process.env.MOLLIE_API_KEY) {
       return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
-    }
-
-    if (!amount || isNaN(Number(amount))) {
-      return res.status(400).json({ error: "Ongeldig bedrag" });
     }
 
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
@@ -33,13 +29,13 @@ export default async function handler(req, res) {
           currency: "EUR",
           value: Number(amount).toFixed(2)
         },
-        description: description || `Gutschein Alt Grieth ${Number(amount).toFixed(2)} EUR`,
-        redirectUrl: "https://project-eab54.vercel.app/success.html",
+        description: "Gutschein Alt Grieth",
+        redirectUrl: "https://voucherfront.vercel.app/success.html?id={payment.id}",
         metadata: {
-          name: name || "",
-          email: email || "",
-          message: message || "",
-          amount: Number(amount).toFixed(2)
+          name,
+          email,
+          message,
+          amount
         }
       })
     });
@@ -47,26 +43,14 @@ export default async function handler(req, res) {
     const data = await mollieResponse.json();
 
     if (!mollieResponse.ok) {
-      return res.status(mollieResponse.status).json({
-        error: "Mollie error",
-        mollie: data
-      });
-    }
-
-    if (!data?._links?.checkout?.href) {
-      return res.status(500).json({
-        error: "Geen checkoutUrl ontvangen van Mollie"
-      });
+      return res.status(500).json(data);
     }
 
     return res.status(200).json({
-      id: data.id,
       checkoutUrl: data._links.checkout.href
     });
-  } catch (error) {
-    return res.status(500).json({
-      error: "Server error",
-      details: error.message
-    });
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 }
