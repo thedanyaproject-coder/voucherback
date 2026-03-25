@@ -30,7 +30,7 @@ export default async function handler(req, res) {
           value: Number(amount).toFixed(2)
         },
         description: "Gutschein Alt Grieth",
-        redirectUrl: "https://voucherfront.vercel.app/success.html?id={payment.id}",
+        redirectUrl: "https://voucherfront.vercel.app/success.html",
         metadata: {
           name,
           email,
