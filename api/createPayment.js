@@ -12,10 +12,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { amount, name, email, message } = req.body || {};
+    const { amount, name, email, message, description } = req.body || {};
 
     if (!process.env.MOLLIE_API_KEY) {
       return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
+    }
+
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Ongeldig bedrag" });
     }
 
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
@@ -29,13 +33,13 @@ export default async function handler(req, res) {
           currency: "EUR",
           value: Number(amount).toFixed(2)
         },
-        description: "Gutschein Alt Grieth",
+        description: description || "Gutschein Alt Grieth",
         redirectUrl: "https://voucherfront.vercel.app/success.html",
         metadata: {
-          name,
-          email,
-          message,
-          amount
+          name: name || "",
+          email: email || "",
+          message: message || "",
+          amount: Number(amount).toFixed(2)
         }
       })
     });
@@ -47,10 +51,12 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
+      id: data.id,
       checkoutUrl: data._links.checkout.href
     });
-
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      error: err.message
+    });
   }
 }
