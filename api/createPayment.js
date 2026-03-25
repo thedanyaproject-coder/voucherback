@@ -1,29 +1,25 @@
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    console.log("Incoming body:", req.body);
-
-    const body = req.body || {};
-    const amount = body.amount;
-    const name = body.name || "";
-    const email = body.email || "";
-    const description = body.description || "Gutschein Alt Grieth";
-    const message = body.message || "";
+    const { amount, name, email, description, message } = req.body || {};
 
     if (!process.env.MOLLIE_API_KEY) {
-      return res.status(500).json({
-        error: "MOLLIE_API_KEY ontbreekt in Vercel"
-      });
+      return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
     }
 
     if (!amount || isNaN(Number(amount))) {
-      return res.status(400).json({
-        error: "Ongeldig bedrag ontvangen",
-        receivedAmount: amount
-      });
+      return res.status(400).json({ error: "Ongeldig bedrag" });
     }
 
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
@@ -37,20 +33,18 @@ export default async function handler(req, res) {
           currency: "EUR",
           value: Number(amount).toFixed(2)
         },
-        description,
-        redirectUrl: "https://JOUW-FRONTEND-URL/success.html",
+        description: description || `Gutschein Alt Grieth ${Number(amount).toFixed(2)} EUR`,
+        redirectUrl: "https://project-eab54.vercel.app/success.html",
         metadata: {
-          name,
-          email,
-          message,
+          name: name || "",
+          email: email || "",
+          message: message || "",
           amount: Number(amount).toFixed(2)
         }
       })
     });
 
     const data = await mollieResponse.json();
-    console.log("Mollie response status:", mollieResponse.status);
-    console.log("Mollie response data:", data);
 
     if (!mollieResponse.ok) {
       return res.status(mollieResponse.status).json({
@@ -61,8 +55,7 @@ export default async function handler(req, res) {
 
     if (!data?._links?.checkout?.href) {
       return res.status(500).json({
-        error: "Geen checkoutUrl ontvangen van Mollie",
-        mollie: data
+        error: "Geen checkoutUrl ontvangen van Mollie"
       });
     }
 
@@ -71,7 +64,6 @@ export default async function handler(req, res) {
       checkoutUrl: data._links.checkout.href
     });
   } catch (error) {
-    console.error("Server crash:", error);
     return res.status(500).json({
       error: "Server error",
       details: error.message
