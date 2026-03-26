@@ -1,76 +1,47 @@
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const { amount, name, email, message, description } = req.body || {};
+  const { amount, name } = req.body;
 
-    if (!process.env.MOLLIE_API_KEY) {
-      return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
-    }
+  const now = new Date();
 
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      return res.status(400).json({ error: "Ongeldig bedrag" });
-    }
+  const date =
+    now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0");
 
-    const now = new Date();
-    const purchaseDate = now.toISOString();
-    const validUntil = new Date(now);
-    validUntil.setFullYear(validUntil.getFullYear() + 1);
+  const sequence = Math.floor(1000 + Math.random() * 9000);
 
-    const voucherCode =
-      "AG-" +
-      now.getFullYear() +
-      "-" +
-      Math.floor(100000 + Math.random() * 900000);
+  const voucherCode = `${date}-${sequence}`;
 
-    const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`,
-        "Content-Type": "application/json"
+  const payment = await fetch("https://api.mollie.com/v2/payments", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      amount: {
+        currency: "EUR",
+        value: amount.toFixed(2)
       },
-      body: JSON.stringify({
-        amount: {
-          currency: "EUR",
-          value: Number(amount).toFixed(2)
-        },
-        description: description || "Gutschein Alt Grieth",
-        redirectUrl: "https://voucherfront.vercel.app/success.html",
-        metadata: {
-          name: name || "",
-          email: email || "",
-          message: message || "",
-          amount: Number(amount).toFixed(2),
-          voucherCode,
-          purchaseDate,
-          validUntil: validUntil.toISOString()
-        }
-      })
-    });
+      description: `Voucher ${voucherCode}`,
+      redirectUrl: `${process.env.BASE_URL}/success.html?voucher=${voucherCode}&amount=${amount}&name=${encodeURIComponent(name)}`,
+      metadata: {
+        voucherCode,
+        name,
+        amount,
+        createdAt: now.toISOString()
+      }
+    })
+  });
 
-    const data = await mollieResponse.json();
+  const data = await payment.json();
 
-    if (!mollieResponse.ok) {
-      return res.status(500).json(data);
-    }
-
-    return res.status(200).json({
-      id: data.id,
-      checkoutUrl: data._links.checkout.href
-    });
-  } catch (err) {
-    return res.status(500).json({
-      error: err.message
-    });
-  }
+  return res.status(200).json({
+    checkoutUrl: data._links.checkout.href,
+    voucherCode
+  });
 }
