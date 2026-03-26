@@ -18,6 +18,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Geen payment id ontvangen" });
     }
 
+    if (!process.env.MOLLIE_API_KEY) {
+      return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
+    }
+
     const mollieResponse = await fetch(`https://api.mollie.com/v2/payments/${id}`, {
       headers: {
         Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`
@@ -44,7 +48,7 @@ export default async function handler(req, res) {
       invoiceReference: data.metadata?.invoiceReference || "",
       purchaseDate: data.metadata?.purchaseDate || data.createdAt || "",
       validUntil: data.metadata?.validUntil || "",
-      paidVia: data.metadata?.paidVia || "Mollie",
+      paidVia: data.method || data.metadata?.paidVia || "Mollie",
       paidAt: data.paidAt || ""
     });
   } catch (err) {
