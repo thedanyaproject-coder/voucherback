@@ -12,12 +12,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { amount, name, email, message, icon } = req.body;
+    const { amount, name, email, message, icon } = req.body || {};
+
+    if (!amount || !name || !email) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
     const mollieApiKey = process.env.MOLLIE_API_KEY;
-    const baseUrl = "https://voucherback.vercel.app";
 
-    const response = await fetch("https://api.mollie.com/v2/payments", {
+    if (!mollieApiKey) {
+      return res.status(500).json({ error: "Missing MOLLIE_API_KEY" });
+    }
+
+    const redirectUrl =
+      `https://www.altgrieth.de/gutschein-download` +
+      `?amount=${encodeURIComponent(Number(amount).toFixed(2))}` +
+      `&name=${encodeURIComponent(name)}` +
+      `&email=${encodeURIComponent(email)}` +
+      `&message=${encodeURIComponent(message || "")}` +
+      `&icon=${encodeURIComponent(icon || "❤")}`;
+
+    const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${mollieApiKey}`,
@@ -29,23 +44,26 @@ export default async function handler(req, res) {
           value: Number(amount).toFixed(2),
         },
         description: `Gutschein ${name}`,
-        redirectUrl: `${baseUrl}/success.html?amount=${amount}&name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&message=${encodeURIComponent(message)}&icon=${encodeURIComponent(icon)}`,
+        redirectUrl: redirectUrl,
       }),
     });
 
-    const data = await response.json();
+    const data = await mollieResponse.json();
 
-    if (!response.ok) {
-      return res.status(500).json({ error: data });
+    if (!mollieResponse.ok) {
+      return res.status(500).json({
+        error: data?.detail || data?.message || "Mollie error",
+        mollie: data,
+      });
     }
 
     return res.status(200).json({
-      checkoutUrl: data._links.checkout.href,
+      checkoutUrl: data?._links?.checkout?.href,
     });
-
   } catch (error) {
     return res.status(500).json({
-      error: error.message,
+      error: "Server error",
+      details: error.message,
     });
   }
 }
