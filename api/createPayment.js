@@ -1,47 +1,87 @@
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { amount, name } = req.body;
+  try {
+    const { amount, name, email, message } = req.body || {};
 
-  const now = new Date();
+    if (!process.env.MOLLIE_API_KEY) {
+      return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
+    }
 
-  const date =
-    now.getFullYear().toString() +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    String(now.getDate()).padStart(2, "0");
+    const numAmount = Number(amount);
 
-  const sequence = Math.floor(1000 + Math.random() * 9000);
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ error: "Ongeldig bedrag" });
+    }
 
-  const voucherCode = `${date}-${sequence}`;
+    const now = new Date();
 
-  const payment = await fetch("https://api.mollie.com/v2/payments", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      amount: {
-        currency: "EUR",
-        value: amount.toFixed(2)
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const random = String(Math.floor(1 + Math.random() * 9999)).padStart(4, "0");
+
+    const voucherCode = `${yyyy}${mm}${dd}-${random}`;
+
+    const purchaseDate = now.toISOString();
+    const validUntil = new Date(now);
+    validUntil.setFullYear(validUntil.getFullYear() + 1);
+
+    const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`,
+        "Content-Type": "application/json"
       },
-      description: `Voucher ${voucherCode}`,
-      redirectUrl: `${process.env.BASE_URL}/success.html?voucher=${voucherCode}&amount=${amount}&name=${encodeURIComponent(name)}`,
-      metadata: {
-        voucherCode,
-        name,
-        amount,
-        createdAt: now.toISOString()
-      }
-    })
-  });
+      body: JSON.stringify({
+        amount: {
+          currency: "EUR",
+          value: numAmount.toFixed(2)
+        },
+        description: `Gutschein ${voucherCode}`,
+        redirectUrl: "https://voucherfront.vercel.app/success.html",
+        metadata: {
+          voucherCode,
+          invoiceReference: voucherCode,
+          name: name || "",
+          email: email || "",
+          message: message || "",
+          amount: numAmount.toFixed(2),
+          purchaseDate,
+          validUntil: validUntil.toISOString(),
+          paidVia: "Mollie"
+        }
+      })
+    });
 
-  const data = await payment.json();
+    const data = await mollieResponse.json();
 
-  return res.status(200).json({
-    checkoutUrl: data._links.checkout.href,
-    voucherCode
-  });
+    if (!mollieResponse.ok) {
+      return res.status(500).json({
+        error: "Mollie error",
+        details: data
+      });
+    }
+
+    return res.status(200).json({
+      id: data.id,
+      voucherCode,
+      checkoutUrl: data._links?.checkout?.href
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: "Server error",
+      details: err.message
+    });
+  }
 }
