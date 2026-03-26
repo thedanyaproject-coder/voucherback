@@ -1,3 +1,5 @@
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -12,61 +14,110 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { amount, name, email, message } = req.body || {};
+    const { amount, name, email, message } = req.body;
 
-    if (!amount || !name || !email) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
+    const voucherCode = "AG-" + Date.now().toString().slice(-6);
 
-    const mollieApiKey = process.env.MOLLIE_API_KEY;
-    const baseUrl = process.env.BASE_URL || "https://voucherback.vercel.app";
+    // 🔥 PDF MAKEN
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([842, 595]); // A4 landscape
 
-    if (!mollieApiKey) {
-      return res.status(500).json({ error: "Missing MOLLIE_API_KEY" });
-    }
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const paymentBody = {
-      amount: {
-        currency: "EUR",
-        value: Number(amount).toFixed(2),
-      },
-      description: `Gutschein ${name}`,
-      redirectUrl: `${baseUrl}/success.html?amount=${encodeURIComponent(amount)}&name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&message=${encodeURIComponent(message || "")}`,
-      webhookUrl: `${baseUrl}/api/webhook`,
-      metadata: {
-        amount: Number(amount).toFixed(2),
-        name,
-        email,
-        message: message || "",
-      },
-    };
-
-    const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${mollieApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(paymentBody),
+    // achtergrond
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: 842,
+      height: 595,
+      color: rgb(1, 1, 1),
     });
 
-    const data = await mollieResponse.json();
+    // kader
+    page.drawRectangle({
+      x: 30,
+      y: 30,
+      width: 782,
+      height: 535,
+      borderWidth: 2,
+      borderColor: rgb(0.74, 0.68, 0.51), // #bdad82
+    });
 
-    if (!mollieResponse.ok) {
-      return res.status(mollieResponse.status).json({
-        error: data.detail || "Mollie error",
-        mollie: data,
+    // titel
+    page.drawText("GASTHAUS ALT GRIETH", {
+      x: 260,
+      y: 520,
+      size: 18,
+      font,
+      color: rgb(0.74, 0.68, 0.51),
+    });
+
+    page.drawText("GUTSCHEIN", {
+      x: 320,
+      y: 460,
+      size: 40,
+      font,
+      color: rgb(0.09, 0.02, 0.13), // #160520
+    });
+
+    // bedrag
+    page.drawText(`€ ${amount}`, {
+      x: 350,
+      y: 380,
+      size: 36,
+      font,
+      color: rgb(0.09, 0.02, 0.13),
+    });
+
+    // naam
+    page.drawText(`Für: ${name}`, {
+      x: 80,
+      y: 260,
+      size: 20,
+      font,
+      color: rgb(0.09, 0.02, 0.13),
+    });
+
+    // bericht
+    if (message) {
+      page.drawText(message, {
+        x: 80,
+        y: 220,
+        size: 16,
+        font,
+        color: rgb(0.09, 0.02, 0.13),
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      checkoutUrl: data._links?.checkout?.href || null,
-      paymentId: data.id || null,
+    // code
+    page.drawText(`Code: ${voucherCode}`, {
+      x: 80,
+      y: 120,
+      size: 18,
+      font,
+      color: rgb(0.74, 0.68, 0.51),
     });
+
+    // geldigheid
+    page.drawText("Gültig 1 Jahr ab Kaufdatum", {
+      x: 80,
+      y: 90,
+      size: 14,
+      font,
+      color: rgb(0.09, 0.02, 0.13),
+    });
+
+    const pdfBytes = await pdfDoc.save();
+
+    // 🔥 DIRECT DOWNLOAD ALS TEST (tijdelijk zonder Mollie)
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=gutschein.pdf");
+
+    return res.send(Buffer.from(pdfBytes));
+
   } catch (error) {
     return res.status(500).json({
-      error: "Server error",
+      error: "PDF error",
       details: error.message,
     });
   }
