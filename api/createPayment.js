@@ -1,12 +1,5 @@
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
+  // Alleen POST toestaan
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -14,72 +7,65 @@ export default async function handler(req, res) {
   try {
     const { amount, name, email, message } = req.body || {};
 
-    if (!process.env.MOLLIE_API_KEY) {
-      return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
+    if (!amount || !name || !email) {
+      return res.status(400).json({
+        error: "Missing required fields",
+      });
     }
 
-    const numAmount = Number(amount);
+    const mollieApiKey = process.env.MOLLIE_API_KEY;
 
-    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
-      return res.status(400).json({ error: "Ongeldig bedrag" });
+    if (!mollieApiKey) {
+      return res.status(500).json({
+        error: "MOLLIE_API_KEY ontbreekt in environment variables",
+      });
     }
 
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const random = String(Math.floor(1 + Math.random() * 9999)).padStart(4, "0");
+    const baseUrl =
+      process.env.BASE_URL || "https://voucherback.vercel.app";
 
-    const voucherCode = `${yyyy}${mm}${dd}-${random}`;
-    const purchaseDate = now.toISOString();
-    const validUntilDate = new Date(now);
-    validUntilDate.setFullYear(validUntilDate.getFullYear() + 1);
+    const paymentData = {
+      amount: {
+        currency: "EUR",
+        value: Number(amount).toFixed(2),
+      },
+      description: `Gutschein voor ${name}`,
+      redirectUrl: `${baseUrl}/success?name=${encodeURIComponent(name)}&amount=${encodeURIComponent(amount)}&email=${encodeURIComponent(email)}&message=${encodeURIComponent(message || "")}`,
+      webhookUrl: `${baseUrl}/api/webhook`,
+      metadata: {
+        name,
+        email,
+        message: message || "",
+        amount: Number(amount).toFixed(2),
+      },
+    };
 
-    const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
+    const response = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${mollieApiKey}`,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        amount: {
-          currency: "EUR",
-          value: numAmount.toFixed(2)
-        },
-        description: `Gutschein ${voucherCode}`,
-        redirectUrl: "https://voucherfront.vercel.app/success.html",
-        metadata: {
-          voucherCode,
-          invoiceReference: voucherCode,
-          name: name || "",
-          email: email || "",
-          message: message || "",
-          amount: numAmount.toFixed(2),
-          purchaseDate,
-          validUntil: validUntilDate.toISOString(),
-          paidVia: "Mollie"
-        }
-      })
+      body: JSON.stringify(paymentData),
     });
 
-    const data = await mollieResponse.json();
+    const data = await response.json();
 
-    if (!mollieResponse.ok) {
-      return res.status(500).json({
-        error: "Mollie error",
-        details: data
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data?.detail || data?.message || "Mollie fout",
+        mollie: data,
       });
     }
 
     return res.status(200).json({
-      id: data.id,
-      voucherCode,
-      checkoutUrl: data._links?.checkout?.href
+      checkoutUrl: data?._links?.checkout?.href,
+      id: data?.id,
     });
-  } catch (err) {
+  } catch (error) {
     return res.status(500).json({
       error: "Server error",
-      details: err.message
+      details: error.message,
     });
   }
 }
