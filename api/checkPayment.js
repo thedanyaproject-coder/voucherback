@@ -18,40 +18,39 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Geen payment id ontvangen" });
     }
 
-    if (!process.env.MOLLIE_API_KEY) {
-      return res.status(500).json({ error: "MOLLIE_API_KEY ontbreekt" });
-    }
-
-    const response = await fetch(`https://api.mollie.com/v2/payments/${id}`, {
+    const mollieResponse = await fetch(`https://api.mollie.com/v2/payments/${id}`, {
       headers: {
         Authorization: `Bearer ${process.env.MOLLIE_API_KEY}`
       }
     });
 
-    const data = await response.json();
+    const data = await mollieResponse.json();
 
-    if (!response.ok) {
-      return res.status(response.status).json({
+    if (!mollieResponse.ok) {
+      return res.status(500).json({
         error: "Mollie error",
-        mollie: data
+        details: data
       });
     }
 
     return res.status(200).json({
       id: data.id,
       status: data.status,
-      amount: data.amount?.value || "",
+      amount: data.metadata?.amount || data.amount?.value || "",
       name: data.metadata?.name || "",
       email: data.metadata?.email || "",
       message: data.metadata?.message || "",
       voucherCode: data.metadata?.voucherCode || "",
+      invoiceReference: data.metadata?.invoiceReference || "",
       purchaseDate: data.metadata?.purchaseDate || data.createdAt || "",
-      validUntil: data.metadata?.validUntil || ""
+      validUntil: data.metadata?.validUntil || "",
+      paidVia: data.metadata?.paidVia || "Mollie",
+      paidAt: data.paidAt || ""
     });
-  } catch (error) {
+  } catch (err) {
     return res.status(500).json({
       error: "Server error",
-      details: error.message
+      details: err.message
     });
   }
 }
