@@ -25,17 +25,16 @@ export default async function handler(req, res) {
     }
 
     const now = new Date();
-
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     const dd = String(now.getDate()).padStart(2, "0");
-    const random = String(Math.floor(1 + Math.random() * 9999)).padStart(4, "0");
 
+    const random = String(Math.floor(1 + Math.random() * 9999)).padStart(4, "0");
     const voucherCode = `${yyyy}${mm}${dd}-${random}`;
 
     const purchaseDate = now.toISOString();
-    const validUntil = new Date(now);
-    validUntil.setFullYear(validUntil.getFullYear() + 1);
+    const validUntilDate = new Date(now);
+    validUntilDate.setFullYear(validUntilDate.getFullYear() + 1);
 
     const mollieResponse = await fetch("https://api.mollie.com/v2/payments", {
       method: "POST",
@@ -58,7 +57,7 @@ export default async function handler(req, res) {
           message: message || "",
           amount: numAmount.toFixed(2),
           purchaseDate,
-          validUntil: validUntil.toISOString(),
+          validUntil: validUntilDate.toISOString(),
           paidVia: "Mollie"
         }
       })
